@@ -1,108 +1,109 @@
 # AudioTranscrever
 
-Aplicação web *self-hosted* para **transcrição automática de áudio e vídeo**, otimizada para português. Faz upload de um ficheiro, escolhe a qualidade e (opcionalmente) a separação de oradores, e recebe a transcrição pronta a descarregar em `.txt`, `.srt` ou `.json`.
+A self-hosted web application for **automatic audio and video transcription**, optimized for Portuguese. Upload a file, choose the transcription quality and optionally enable speaker separation, and download the result as `.txt`, `.srt`, or `.json`.
 
-Corre inteiramente em casa/servidor próprio (CPU, sem GPU), em Docker, com contas de utilizador, painel de administração e notificações por email.
+It runs entirely on your own machine or server (CPU-only, no GPU required) using Docker, and includes user accounts, an administration panel, and email notifications.
 
----
+## Features
 
-## Funcionalidades
+- **Audio and video transcription** powered by [WhisperX](https://github.com/m-bain/whisperX) (built on faster-whisper).
+- **Two quality modes:** fast (the `medium` model) or maximum quality (`large-v3`).
+- **Optional speaker diarization** that labels each speaker ("Speaker 1", "Speaker 2", ...) using [pyannote-audio](https://github.com/pyannote/pyannote-audio).
+- **Multiple export formats:** plain text (`.txt`), subtitles (`.srt`), and structured data (`.json`).
+- **User accounts** with login, access requests, and administrator approval.
+- **Administration panel** to approve or reject requests, enable or disable accounts, and reset passwords.
+- **Per-user transcription history.**
+- **Optional email notifications** when a job finishes or an access request is approved.
+- **Automatic cleanup** of temporary files and old jobs.
+- **Asynchronous job queue** that processes one job at a time to avoid overloading the server.
 
-- 🎙️ **Transcrição de áudio e vídeo** com [WhisperX](https://github.com/m-bain/whisperX) (faster-whisper por baixo)
-- ⚡ **Dois modos de qualidade:** rápido (modelo `medium`) ou qualidade máxima (`large-v3`)
-- 🗣️ **Diarização opcional** — distingue oradores ("Orador 1", "Orador 2"...) via [pyannote-audio](https://github.com/pyannote/pyannote-audio)
-- 📄 **Exportação** em texto simples (`.txt`), legendas (`.srt`) e dados estruturados (`.json`)
-- 👤 **Contas de utilizador** — login, pedidos de acesso e aprovação por administrador
-- 🛠️ **Painel de admin** — aprovar/rejeitar pedidos, ativar/desativar contas, reset de password
-- 🕑 **Histórico** de transcrições por utilizador
-- 📨 **Notificações por email** quando um trabalho termina ou um acesso é aprovado (opcional)
-- 🧹 **Limpeza automática** de ficheiros temporários e de trabalhos antigos
-- ⏳ **Fila assíncrona** — processa um trabalho de cada vez, sem sobrecarregar o servidor
-
----
-
-## Tecnologias
+## Tech Stack
 
 **Backend / Web**
-- [Python](https://www.python.org/) 3.12
-- [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/)
-- [SQLAlchemy](https://www.sqlalchemy.org/) sobre [SQLite](https://www.sqlite.org/)
-- [Jinja2](https://jinja.palletsprojects.com/) para os templates HTML
-- Autenticação por sessão (cookie assinado) com `passlib` + `bcrypt`
 
-**Motor de transcrição**
+- [Python](https://www.python.org/) 3.12
+- [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://www.uvicorn.org/)
+- [SQLAlchemy](https://www.sqlalchemy.org/) over [SQLite](https://www.sqlite.org/)
+- [Jinja2](https://jinja.palletsprojects.com/) for HTML templating
+- Session-based authentication (signed cookies) with `passlib` and `bcrypt`
+
+**Transcription engine**
+
 - [WhisperX](https://github.com/m-bain/whisperX) 3.4.2
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-- [pyannote-audio](https://github.com/pyannote/pyannote-audio) (diarização)
-- [PyTorch](https://pytorch.org/) (build CPU)
+- [pyannote-audio](https://github.com/pyannote/pyannote-audio) for diarization
+- [PyTorch](https://pytorch.org/) (CPU build)
 
-**Infraestrutura**
-- [Docker](https://www.docker.com/) + Docker Compose
+**Infrastructure**
 
----
+- [Docker](https://www.docker.com/) and Docker Compose
 
-## Arquitetura
+## Architecture
 
-Dois serviços Docker independentes:
+The application is split into two independent Docker services:
 
 ```
-┌──────────────────────┐         HTTP          ┌──────────────────────────┐
-│   transcrever-app    │  ───────────────────► │   transcrever-whisperx    │
-│                      │                       │                           │
-│  FastAPI + SQLite    │                       │  FastAPI + WhisperX       │
-│  UI, contas, fila,   │ ◄─────────────────── │  faster-whisper, pyannote  │
-│  histórico, emails   │      transcrição      │  (CPU, int8)              │
-└──────────────────────┘                       └──────────────────────────┘
++----------------------+         HTTP          +---------------------------+
+|   transcrever-app    |  ------------------->  |   transcrever-whisperx    |
+|                      |                        |                           |
+|  FastAPI + SQLite    |                        |  FastAPI + WhisperX       |
+|  UI, accounts, queue |  <-------------------  |  faster-whisper, pyannote |
+|  history, emails     |     transcription      |  (CPU, int8)              |
++----------------------+                        +---------------------------+
 ```
 
-- **`app`** — interface web, autenticação, base de dados, fila de trabalhos e notificações. Coloca os pedidos de transcrição no serviço WhisperX por HTTP interno.
-- **`whisperx`** — serviço dedicado que carrega os modelos e faz a transcrição/diarização. Isolado para poder limitar CPU e memória independentemente.
+- **`app`** provides the web interface, authentication, database, job queue, and notifications. It forwards transcription requests to the WhisperX service over an internal HTTP call.
+- **`whisperx`** is a dedicated service that loads the models and performs transcription and diarization. Isolating it allows CPU and memory limits to be tuned independently.
 
----
+## Getting Started
 
-## Como correr
-
-**Pré-requisitos:** [Docker](https://docs.docker.com/get-docker/) e Docker Compose.
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) and Docker Compose.
 
 ```bash
-# 1. Clonar o repositório
-git clone <url-do-repo>
+# 1. Clone the repository
+git clone https://github.com/josemalves/AudioTranscrever.git
 cd AudioTranscrever
 
-# 2. Criar o ficheiro de configuração a partir do exemplo
+# 2. Create the configuration file from the example
 cp .env.example .env
 
-# 3. Editar o .env e preencher os segredos (ver secção abaixo)
-#    - SESSION_SECRET, ADMIN_PASSWORD são obrigatórios
-#    - HF_TOKEN só é preciso se quiseres diarização
+# 3. Edit .env and fill in the secrets (see the Configuration section)
+#    - SESSION_SECRET and ADMIN_PASSWORD are required
+#    - HF_TOKEN is only needed if you want diarization
 
-# 4. Arrancar
+# 4. Start the application
 docker compose up -d --build
 ```
 
-A aplicação fica disponível em `http://localhost:8082` (porta configurável via `APP_PORT`).
+The application is then available at `http://localhost:8082` (the port is configurable via `APP_PORT`).
 
-No primeiro arranque é criada automaticamente uma conta de administrador com as credenciais definidas no `.env`.
+On first startup, an administrator account is created automatically using the credentials defined in `.env`.
 
-> ℹ️ Na primeira transcrição, os modelos do Whisper são descarregados (vários GB) e ficam em cache local em `hf-cache/`. As transcrições seguintes são imediatas.
+> On the first transcription, the Whisper models are downloaded (several GB) and cached locally in `hf-cache/`. Subsequent transcriptions start immediately.
 
----
+## Configuration
 
-## Configuração
+The main settings live in `.env` (see [`.env.example`](.env.example) for the full list):
 
-As variáveis principais ficam no `.env` (ver [`.env.example`](.env.example) para a lista completa):
+| Variable | Description |
+|----------|-------------|
+| `SESSION_SECRET` | Secret used to sign session cookies (generate with `openssl rand -hex 32`) |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Administrator account created on first startup |
+| `WHISPER_MODEL` | Default Whisper model (`medium`, `large-v3`, ...) |
+| `WHISPER_LANGUAGE` | Transcription language (`pt` by default) |
+| `HF_TOKEN` | HuggingFace token, required **only** for diarization |
+| `SMTP_*` | Email configuration for notifications (optional) |
 
-| Variável | Descrição |
-|----------|-----------|
-| `SESSION_SECRET` | Segredo para assinar os cookies de sessão (gerar com `openssl rand -hex 32`) |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Conta de admin criada no primeiro arranque |
-| `WHISPER_MODEL` | Modelo Whisper por defeito (`medium`, `large-v3`, ...) |
-| `WHISPER_LANGUAGE` | Idioma da transcrição (`pt` por defeito) |
-| `HF_TOKEN` | Token HuggingFace — necessário **apenas** para diarização |
-| `SMTP_*` | Configuração de email para notificações (opcional) |
+## Screenshots
 
----
+<!-- TODO: add screenshots -->
+<!--
+![Transcription page](docs/screenshots/app.png)
+![Transcription result](docs/screenshots/result.png)
+![History](docs/screenshots/history.png)
+![Admin panel](docs/screenshots/admin.png)
+-->
 
-## Licença
+## License
 
-[MIT](LICENSE) © José Alves
+[MIT](LICENSE) (c) José Alves
