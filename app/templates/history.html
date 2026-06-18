@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Histórico · AudioTranscrever{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Os meus trabalhos</h1>
+  <p class="muted">Atualiza automaticamente. Os trabalhos correm em fila — só um de cada vez.</p>
+  <input type="hidden" id="csrf-token" value="{{ csrf_token }}">
+  <table class="table" id="jobs-table">
+    <thead>
+      <tr>
+        <th>Ficheiro</th>
+        <th>Estado</th>
+        <th>Duração</th>
+        <th>Submetido</th>
+        <th>Concluído</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="jobs-tbody">
+      <tr><td colspan="6" class="muted">A carregar…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+const tbody = document.getElementById('jobs-tbody');
+const CSRF = document.getElementById('csrf-token').value;
+
+const STATUS_LABEL = {
+  pending: '<span class="status-badge st-pending">Em fila</span>',
+  running: '<span class="status-badge st-running">A processar…</span>',
+  done: '<span class="status-badge st-done">Concluído</span>',
+  failed: '<span class="status-badge st-failed">Falhado</span>',
+};
+
+function fmtDuration(s) {
+  if (s == null) return '—';
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}m ${r}s`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/jobs');
+    if (r.status === 401) { window.location.href = '/login'; return; }
+    const items = await r.json();
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">Ainda não há trabalhos. <a href="/app">Submeter um áudio →</a></td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(it => {
+      const statusHtml = STATUS_LABEL[it.status] || it.status;
+      const fileLink = it.status === 'done'
+        ? `<a href="/history/${it.id}">${escapeHtml(it.filename)}</a>`
+        : escapeHtml(it.filename);
+      const diarBadge = it.diarized ? ' <span class="badge">oradores</span>' : '';
+      const modelBadge = it.model ? ` <span class="badge model">${escapeHtml(it.model)}</span>` : '';
+      const errCell = it.error_message ? `<div class="muted err-msg">${escapeHtml(it.error_message)}</div>` : '';
+      const isPending = it.status === 'pending';
+      const isRunning = it.status === 'running';
+      const actionLabel = isPending ? 'Cancelar' : 'Apagar';
+      const confirmMsg = isPending ? 'Cancelar este trabalho?' : 'Apagar?';
+      const actionHtml = isRunning
+        ? '<span class="muted">—</span>'
+        : `<form method="post" action="/history/${it.id}/delete" class="inline" onsubmit="return confirm('${confirmMsg}');">
+             <input type="hidden" name="csrf_token" value="${CSRF}">
+             <button class="link danger" type="submit">${actionLabel}</button>
+           </form>`;
+      return `<tr>
+        <td>${fileLink}${diarBadge}${modelBadge}${errCell}</td>
+        <td>${statusHtml}</td>
+        <td>${fmtDuration(it.duration_seconds)}</td>
+        <td>${fmtDate(it.created_at)}</td>
+        <td>${fmtDate(it.completed_at)}</td>
+        <td>${actionHtml}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+load();
+setInterval(load, 4000);
+</script>
+{% endblock %}

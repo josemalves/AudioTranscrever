@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ item.filename }} · AudioTranscrever{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>{{ item.filename }}</h1>
+  <p class="muted">
+    {{ item.created_at.strftime('%Y-%m-%d %H:%M') }}
+    {% if item.duration_seconds %}· {{ '%dm %ds'|format(item.duration_seconds // 60, item.duration_seconds % 60) }}{% endif %}
+    {% if item.diarized %}· com identificação de oradores{% endif %}
+  </p>
+  <textarea readonly class="full" id="result-text"></textarea>
+  <div class="result-actions">
+    <button type="button" class="secondary" id="copy-btn">Copiar</button>
+    <button type="button" class="secondary" data-format="txt">Descarregar .txt</button>
+    <button type="button" class="secondary" data-format="srt" {% if not item.segments_json %}disabled title="Esta transcrição foi guardada sem segmentos"{% endif %}>Descarregar .srt</button>
+    <button type="button" class="secondary" data-format="json" {% if not item.segments_json %}disabled title="Esta transcrição foi guardada sem segmentos"{% endif %}>Descarregar .json</button>
+  </div>
+  <p style="margin-top: 16px;"><a href="/history">← Voltar ao histórico</a></p>
+</div>
+
+<script id="data" type="application/json">{{ data_json|safe }}</script>
+<script>
+  const result = JSON.parse(document.getElementById('data').textContent);
+  const resultText = document.getElementById('result-text');
+
+  function pad(n, w = 2) { return String(n).padStart(w, '0'); }
+  function fmtTime(t, withMs = false) {
+    if (t == null) return '00:00:00' + (withMs ? ',000' : '');
+    const total = Math.max(0, t);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = Math.floor(total % 60);
+    const ms = Math.floor((total - Math.floor(total)) * 1000);
+    return `${pad(h)}:${pad(m)}:${pad(s)}` + (withMs ? `,${pad(ms, 3)}` : '');
+  }
+  function speakerLabel(speaker) {
+    if (!speaker) return null;
+    const m = speaker.match(/(\d+)/);
+    const n = m ? (parseInt(m[1], 10) + 1) : speaker;
+    return `Orador ${n}`;
+  }
+  function buildText(r) {
+    const segs = r.segments || [];
+    if (!segs.length) return r.text || '';
+    const lines = [];
+    let lastSpeaker = null;
+    for (const seg of segs) {
+      const spk = speakerLabel(seg.speaker);
+      const t = fmtTime(seg.start);
+      if (r.diarized && spk) {
+        if (spk !== lastSpeaker) lines.push('');
+        lines.push(`[${t}] ${spk}: ${seg.text}`);
+        lastSpeaker = spk;
+      } else {
+        lines.push(seg.text);
+      }
+    }
+    return lines.join('\n').trim();
+  }
+  function buildSrt(r) {
+    const segs = r.segments || [];
+    if (!segs.length) return '';
+    const out = [];
+    segs.forEach((seg, i) => {
+      const spk = speakerLabel(seg.speaker);
+      const prefix = (r.diarized && spk) ? `[${spk}] ` : '';
+      out.push(String(i + 1));
+      out.push(`${fmtTime(seg.start, true)} --> ${fmtTime(seg.end, true)}`);
+      out.push(prefix + seg.text);
+      out.push('');
+    });
+    return out.join('\n');
+  }
+  function buildJson(r) { return JSON.stringify(r, null, 2); }
+  function payload(fmt) {
+    if (fmt === 'srt') return buildSrt(result);
+    if (fmt === 'json') return buildJson(result);
+    return buildText(result);
+  }
+
+  resultText.value = buildText(result);
+
+  document.getElementById('copy-btn').addEventListener('click', () => {
+    navigator.clipboard.writeText(resultText.value);
+  });
+
+  document.querySelectorAll('button[data-format]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      const ext = btn.dataset.format;
+      const mime = ext === 'json' ? 'application/json' : 'text/plain';
+      const blob = new Blob([payload(ext)], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const base = "{{ item.filename|e }}".replace(/\.[^.]+$/, '');
+      a.download = base + '.' + ext;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  });
+</script>
+{% endblock %}

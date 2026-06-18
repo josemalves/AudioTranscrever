@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Transcrever · AudioTranscrever{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Transcrever áudio</h1>
+  <p class="muted">Carrega um ficheiro de áudio. O trabalho corre em background — podes fechar o browser e voltar mais tarde.</p>
+  <p class="muted upload-limit">Limite de upload: <b>100 MB</b>. Para ficheiros maiores, contacta o admin.</p>
+
+  <form id="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="file" name="file" accept="audio/*,video/*" required>
+      <p class="dz-text">Clica ou arrasta um ficheiro aqui</p>
+      <p class="dz-file" id="dz-file"></p>
+    </div>
+    <label class="check">
+      <input type="checkbox" id="diarize" name="diarize" value="true">
+      Distinguir oradores (entrevista / reunião)
+    </label>
+    <label class="check">
+      <input type="checkbox" id="quality" name="quality" value="true">
+      Qualidade máxima (mais lento)
+    </label>
+    <div class="info-box">
+      <p><b>Por defeito (rápido):</b> usa o modelo <code>medium</code> — boa qualidade para áudio limpo (WhatsApp, reuniões em sala calma, ditado).</p>
+      <p><b>Qualidade máxima:</b> usa o modelo <code>large-v3</code> — leva 2-3× mais tempo mas vale a pena se o áudio tiver:</p>
+      <ul>
+        <li>Barulho de fundo, gravação de telefone, sotaques fortes</li>
+        <li>Termos técnicos, nomes próprios, números importantes</li>
+        <li>Várias pessoas a falar em simultâneo</li>
+      </ul>
+    </div>
+    <button type="submit" class="primary" id="submit-btn">Submeter</button>
+  </form>
+
+  <div id="progress" class="progress" hidden>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <p class="progress-text" id="progress-text">A enviar… 0%</p>
+  </div>
+  <div id="status" class="status" hidden></div>
+</div>
+
+<script>
+  const form = document.getElementById('upload-form');
+  const fileInput = document.getElementById('file');
+  const dzFile = document.getElementById('dz-file');
+  const dropzone = document.getElementById('dropzone');
+  const statusEl = document.getElementById('status');
+  const submitBtn = document.getElementById('submit-btn');
+
+  fileInput.addEventListener('change', () => {
+    dzFile.textContent = fileInput.files[0] ? fileInput.files[0].name : '';
+  });
+
+  ['dragover', 'dragenter'].forEach(ev =>
+    dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(ev =>
+    dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+  dropzone.addEventListener('drop', e => {
+    if (e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      dzFile.textContent = fileInput.files[0].name;
+    }
+  });
+
+  const progressEl = document.getElementById('progress');
+  const progressFill = document.getElementById('progress-fill');
+  const progressText = document.getElementById('progress-text');
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
+  const MAX_BYTES = 100 * 1024 * 1024;
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = fileInput.files[0];
+    if (!f) return;
+    if (f.size > MAX_BYTES) {
+      statusEl.hidden = false;
+      statusEl.textContent = `Ficheiro tem ${fmtBytes(f.size)} — limite é 100 MB. Contacta o admin para ficheiros maiores.`;
+      return;
+    }
+    submitBtn.disabled = true;
+    statusEl.hidden = true;
+    progressEl.hidden = false;
+    progressFill.style.width = '0%';
+    progressText.textContent = `A enviar… 0% (0 / ${fmtBytes(f.size)})`;
+
+    const fd = new FormData();
+    fd.append('file', f);
+    fd.append('diarize', document.getElementById('diarize').checked ? 'true' : 'false');
+    fd.append('quality', document.getElementById('quality').checked ? 'true' : 'false');
+    fd.append('csrf_token', form.querySelector('input[name="csrf_token"]').value);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/transcribe');
+
+    xhr.upload.addEventListener('progress', (ev) => {
+      if (!ev.lengthComputable) return;
+      const pct = (ev.loaded / ev.total) * 100;
+      progressFill.style.width = pct.toFixed(1) + '%';
+      progressText.textContent = `A enviar… ${pct.toFixed(1)}% (${fmtBytes(ev.loaded)} / ${fmtBytes(ev.total)})`;
+    });
+
+    xhr.upload.addEventListener('load', () => {
+      progressText.textContent = 'Upload completo. A registar trabalho…';
+      progressFill.style.width = '100%';
+    });
+
+    xhr.addEventListener('load', () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          progressText.textContent = 'Submetido — a redirecionar para a lista…';
+          window.location.href = '/history';
+        } else {
+          throw new Error(data.error || `Erro HTTP ${xhr.status}`);
+        }
+      } catch (err) {
+        progressEl.hidden = true;
+        statusEl.hidden = false;
+        statusEl.textContent = 'Erro: ' + err.message;
+        submitBtn.disabled = false;
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      progressEl.hidden = true;
+      statusEl.hidden = false;
+      statusEl.textContent = 'Erro de rede ao enviar o ficheiro.';
+      submitBtn.disabled = false;
+    });
+
+    xhr.send(fd);
+  });
+</script>
+{% endblock %}

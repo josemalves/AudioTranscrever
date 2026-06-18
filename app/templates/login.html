@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Entrar · AudioTranscrever{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>Entrar</h1>
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Utilizador ou email
+      <input type="text" name="username" required autofocus>
+    </label>
+    <label>Password
+      <input type="password" name="password" required>
+    </label>
+    <button type="submit" class="primary block">Entrar</button>
+  </form>
+  <p class="muted center">Sem conta? <a href="/request-access">Pedir acesso</a></p>
+</div>
+{% endblock %}

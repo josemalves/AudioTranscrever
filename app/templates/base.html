@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}AudioTranscrever{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">AudioTranscrever</a>
+    <nav>
+      {% if user %}
+        <a href="/app">Transcrever</a>
+        <a href="/history">Histórico</a>
+        {% if user.is_admin %}<a href="/admin">Admin</a>{% endif %}
+        <span class="user-pill">{{ user.username }}</span>
+        <form method="post" action="/logout" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="link" type="submit">Sair</button>
+        </form>
+      {% endif %}
+    </nav>
+  </header>
+  <main class="container">
+    {% if flash %}
+      <div class="flash flash-{{ flash.level }}">{{ flash.message }}</div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,59 @@
+services:
+  app:
+    build: ./app
+    container_name: transcrever-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8082}:8000"
+    volumes:
+      - ./data:/data
+      - ./app:/app
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET}
+      - DB_PATH=/data/app.db
+      - TRANSCRIBE_URL=http://whisperx:8000
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM=${SMTP_FROM}
+      - SMTP_TLS=${SMTP_TLS:-starttls}
+      - APP_URL=${APP_URL:-http://localhost:8080}
+      - WHISPER_MODEL_FAST=${WHISPER_MODEL_FAST:-medium}
+      - WHISPER_MODEL_QUALITY=${WHISPER_MODEL_QUALITY:-large-v3}
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
+    depends_on:
+      - whisperx
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/login',timeout=3).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  whisperx:
+    build: ./whisperx-service
+    container_name: transcrever-whisperx
+    restart: unless-stopped
+    volumes:
+      - ./hf-cache:/root/.cache/huggingface
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-medium}
+      - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-pt}
+      - HF_TOKEN=${HF_TOKEN}
+      - DEVICE=cpu
+      - COMPUTE_TYPE=int8
+      - BATCH_SIZE=4
+    cpus: 2.0
+    cpuset: "2,3"
+    mem_limit: 16g
+    mem_reservation: 4g
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=3).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s

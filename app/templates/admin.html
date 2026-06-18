@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Admin · AudioTranscrever{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Painel admin</h1>
+
+  <h2>Pedidos pendentes ({{ pending|length }})</h2>
+  {% if pending %}
+    <table class="table">
+      <thead><tr><th>Nome</th><th>Email</th><th>Motivo</th><th>Data</th><th></th></tr></thead>
+      <tbody>
+        {% for p in pending %}
+        <tr>
+          <td>{{ p.name }}</td>
+          <td>{{ p.email }}</td>
+          <td>{{ p.motivo or '—' }}</td>
+          <td>{{ p.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>
+            <form method="post" action="/admin/requests/{{ p.id }}/approve" class="inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="primary small" type="submit">Aprovar</button>
+            </form>
+            <form method="post" action="/admin/requests/{{ p.id }}/reject" class="inline" onsubmit="return confirm('Rejeitar pedido?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="link danger" type="submit">Rejeitar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">Sem pedidos pendentes.</p>
+  {% endif %}
+
+  <h2>Utilizadores ({{ stats|length }})</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Utilizador</th><th>Email</th><th>Estado</th>
+        <th>Total</th><th>Guardadas</th><th>Última utilização</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in stats %}
+      <tr>
+        <td>{{ s.user.username }}{% if s.user.is_admin %} <span class="badge">admin</span>{% endif %}</td>
+        <td>{{ s.user.email }}</td>
+        <td>{% if s.user.is_active %}<span class="ok">ativo</span>{% else %}<span class="off">desativo</span>{% endif %}</td>
+        <td>{{ s.total }}</td>
+        <td>{{ s.saved }}</td>
+        <td>{{ s.last_used.strftime('%Y-%m-%d %H:%M') if s.last_used else '—' }}</td>
+        <td>
+          {% if not s.user.is_admin %}
+          <form method="post" action="/admin/users/{{ s.user.id }}/toggle" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="link" type="submit">{{ 'Desativar' if s.user.is_active else 'Ativar' }}</button>
+          </form>
+          <form method="post" action="/admin/users/{{ s.user.id }}/reset-password" class="inline" onsubmit="return confirm('Reset da password?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="link" type="submit">Reset password</button>
+          </form>
+          <form method="post" action="/admin/users/{{ s.user.id }}/delete" class="inline" onsubmit="return confirm('Apagar utilizador e o seu histórico?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="link danger" type="submit">Apagar</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

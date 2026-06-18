@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Pedir acesso · AudioTranscrever{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>Pedir acesso</h1>
+  <p class="muted">Após aprovação, recebes credenciais por email.</p>
+  <form method="post" action="/request-access">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Nome
+      <input type="text" name="name" required>
+    </label>
+    <label>Email
+      <input type="email" name="email" required>
+    </label>
+    <label>Motivo (opcional)
+      <textarea name="motivo" rows="3" placeholder="Para que vais usar?"></textarea>
+    </label>
+    <button type="submit" class="primary block">Enviar pedido</button>
+  </form>
+  <p class="muted center"><a href="/login">Voltar ao login</a></p>
+</div>
+{% endblock %}
