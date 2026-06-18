@@ -96,13 +96,21 @@ The main settings live in `.env` (see [`.env.example`](.env.example) for the ful
 
 ## Screenshots
 
-<!-- TODO: add screenshots -->
-<!--
-![Transcription page](docs/screenshots/app.png)
-![Transcription result](docs/screenshots/result.png)
-![History](docs/screenshots/history.png)
-![Admin panel](docs/screenshots/admin.png)
--->
+**Transcription page** — upload a file and choose quality and speaker separation.
+
+![Transcription page](screenshots/app.png)
+
+**Result** — transcription with speaker labels and export buttons (`.txt`, `.srt`, `.json`).
+
+![Transcription result](screenshots/result.png)
+
+**History** — per-user job list with status, duration, and timestamps.
+
+![History](screenshots/history.png)
+
+**Administration panel** — manage access requests and user accounts.
+
+![Admin panel](screenshots/admin.png)
 
 ## License
 
