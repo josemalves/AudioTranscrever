@@ -1,5 +1,6 @@
 import json as _json
 import os
+import re
 import secrets
 import threading
 import time
@@ -186,6 +187,10 @@ def _migrate_sqlite():
             conn.execute(text("ALTER TABLE transcriptions ADD COLUMN completed_at DATETIME"))
         if "model" not in cols:
             conn.execute(text("ALTER TABLE transcriptions ADD COLUMN model VARCHAR"))
+        if "speaker_names_json" not in cols:
+            conn.execute(text("ALTER TABLE transcriptions ADD COLUMN speaker_names_json TEXT"))
+        if "edited_text" not in cols:
+            conn.execute(text("ALTER TABLE transcriptions ADD COLUMN edited_text TEXT"))
 
 
 def _process_job(job_id: int):
@@ -630,8 +635,29 @@ def history_detail(tid: int, request: Request, db: Session = Depends(get_db)):
     if item.status != "done":
         return RedirectResponse("/history", status_code=303)
     segments = _json.loads(item.segments_json) if item.segments_json else []
+    speaker_names = _json.loads(item.speaker_names_json) if item.speaker_names_json else {}
+
+    # Distinct speakers in first-appearance order, with their default "Orador N" label.
+    speakers = []
+    seen = set()
+    for s in segments:
+        raw = s.get("speaker")
+        if raw and raw not in seen:
+            seen.add(raw)
+            m = re.search(r"(\d+)", raw)
+            default_label = f"Orador {int(m.group(1)) + 1}" if m else raw
+            speakers.append(
+                {"raw": raw, "default": default_label, "name": speaker_names.get(raw, "")}
+            )
+
     data_json = _json.dumps(
-        {"text": item.text or "", "segments": segments, "diarized": item.diarized}
+        {
+            "text": item.text or "",
+            "segments": segments,
+            "diarized": item.diarized,
+            "speaker_names": speaker_names,
+            "edited_text": item.edited_text,
+        }
     )
     return render(
         request,
@@ -639,6 +665,7 @@ def history_detail(tid: int, request: Request, db: Session = Depends(get_db)):
         user=user,
         item=item,
         data_json=data_json,
+        speakers=speakers,
     )
 
 
@@ -665,6 +692,55 @@ def history_delete(
         db.commit()
         flash(request, "Trabalho cancelado." if was_pending else "Transcrição apagada.", "success")
     return RedirectResponse("/history", status_code=303)
+
+
+@app.post("/history/{tid}/speakers")
+async def history_speakers(tid: int, request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    verify_csrf(request, form.get("csrf_token"))
+    user = current_user(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    item = db.query(Transcription).filter_by(id=tid, user_id=user.id).first()
+    if not item:
+        raise HTTPException(404)
+    names = {}
+    for key, val in form.items():
+        if key.startswith("spk_"):
+            raw = key[4:]
+            val = (val or "").strip()
+            if val:
+                names[raw] = val
+    item.speaker_names_json = _json.dumps(names, ensure_ascii=False) if names else None
+    db.commit()
+    flash(request, "Nomes dos oradores guardados.", "success")
+    return RedirectResponse(f"/history/{tid}", status_code=303)
+
+
+@app.post("/history/{tid}/text")
+def history_text(
+    tid: int,
+    request: Request,
+    csrf_token: str = Form(""),
+    edited_text: str = Form(""),
+    reset: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    verify_csrf(request, csrf_token)
+    user = current_user(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    item = db.query(Transcription).filter_by(id=tid, user_id=user.id).first()
+    if not item:
+        raise HTTPException(404)
+    if reset:
+        item.edited_text = None
+        flash(request, "Texto reposto para a versão automática.", "success")
+    else:
+        item.edited_text = edited_text
+        flash(request, "Texto guardado.", "success")
+    db.commit()
+    return RedirectResponse(f"/history/{tid}", status_code=303)
 
 
 def _require_admin(request: Request, db: Session) -> User:

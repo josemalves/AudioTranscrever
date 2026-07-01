@@ -43,6 +43,10 @@ class Transcription(Base):
     duration_seconds = Column(Integer, nullable=True)
     text = Column(Text, nullable=True)
     segments_json = Column(Text, nullable=True)
+    # Custom speaker labels: JSON map of raw speaker id ("SPEAKER_00") -> name ("João").
+    speaker_names_json = Column(Text, nullable=True)
+    # Manual edits to the transcript. When set, overrides the auto-generated text.
+    edited_text = Column(Text, nullable=True)
     diarized = Column(Boolean, default=False, nullable=False)
     model = Column(String, nullable=True)
     saved = Column(Boolean, default=True, nullable=False)

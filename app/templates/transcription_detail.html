@@ -8,13 +8,44 @@
     {% if item.duration_seconds %}· {{ '%dm %ds'|format(item.duration_seconds // 60, item.duration_seconds % 60) }}{% endif %}
     {% if item.diarized %}· com identificação de oradores{% endif %}
   </p>
-  <textarea readonly class="full" id="result-text"></textarea>
-  <div class="result-actions">
+
+  {% if speakers %}
+  <form method="post" action="/history/{{ item.id }}/speakers" class="speakers-box">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <p class="muted" style="margin-bottom: 8px;"><strong>Nomes dos oradores</strong> — atribui um nome a cada orador detetado.</p>
+    <div class="speakers-grid">
+      {% for spk in speakers %}
+      <label class="speaker-row">
+        <span class="speaker-default">{{ spk.default }}</span>
+        <input type="text" name="spk_{{ spk.raw }}" value="{{ spk.name }}" placeholder="{{ spk.default }}" maxlength="60">
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="secondary" style="margin-top: 10px;">Guardar nomes</button>
+  </form>
+  {% endif %}
+
+  <form method="post" action="/history/{{ item.id }}/text">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <textarea class="full" id="result-text" name="edited_text"></textarea>
+    <div class="result-actions">
+      <button type="submit" class="primary">Guardar texto</button>
+      {% if item.edited_text is not none %}
+      <button type="submit" name="reset" value="1" class="secondary">Repor texto automático</button>
+      {% endif %}
+    </div>
+    {% if item.edited_text is not none %}
+    <p class="muted" style="margin-top: 6px; font-size: 0.85em;">Este texto foi editado manualmente. Renomear oradores não altera o texto editado — usa "Repor texto automático" para voltar à versão gerada.</p>
+    {% endif %}
+  </form>
+
+  <div class="result-actions" style="margin-top: 8px;">
     <button type="button" class="secondary" id="copy-btn">Copiar</button>
     <button type="button" class="secondary" data-format="txt">Descarregar .txt</button>
     <button type="button" class="secondary" data-format="srt" {% if not item.segments_json %}disabled title="Esta transcrição foi guardada sem segmentos"{% endif %}>Descarregar .srt</button>
     <button type="button" class="secondary" data-format="json" {% if not item.segments_json %}disabled title="Esta transcrição foi guardada sem segmentos"{% endif %}>Descarregar .json</button>
   </div>
+
   <p style="margin-top: 16px;"><a href="/history">← Voltar ao histórico</a></p>
 </div>
 
@@ -22,6 +53,7 @@
 <script>
   const result = JSON.parse(document.getElementById('data').textContent);
   const resultText = document.getElementById('result-text');
+  const speakerNames = result.speaker_names || {};
 
   function pad(n, w = 2) { return String(n).padStart(w, '0'); }
   function fmtTime(t, withMs = false) {
@@ -35,27 +67,36 @@
   }
   function speakerLabel(speaker) {
     if (!speaker) return null;
+    if (speakerNames[speaker]) return speakerNames[speaker];
     const m = speaker.match(/(\d+)/);
     const n = m ? (parseInt(m[1], 10) + 1) : speaker;
     return `Orador ${n}`;
   }
+  // Groups consecutive segments from the same speaker into one paragraph.
   function buildText(r) {
     const segs = r.segments || [];
     if (!segs.length) return r.text || '';
-    const lines = [];
-    let lastSpeaker = null;
+    if (!r.diarized) {
+      return segs.map(s => s.text).join('\n').trim();
+    }
+    const blocks = [];
+    let cur = null;
     for (const seg of segs) {
       const spk = speakerLabel(seg.speaker);
-      const t = fmtTime(seg.start);
-      if (r.diarized && spk) {
-        if (spk !== lastSpeaker) lines.push('');
-        lines.push(`[${t}] ${spk}: ${seg.text}`);
-        lastSpeaker = spk;
+      if (spk && cur && cur.spk === spk) {
+        cur.text += ' ' + seg.text;
+      } else if (spk) {
+        cur = { spk, start: seg.start, text: seg.text };
+        blocks.push(cur);
       } else {
-        lines.push(seg.text);
+        blocks.push({ spk: null, start: seg.start, text: seg.text });
+        cur = null;
       }
     }
-    return lines.join('\n').trim();
+    return blocks
+      .map(b => b.spk ? `[${fmtTime(b.start)}] ${b.spk}: ${b.text}` : b.text)
+      .join('\n\n')
+      .trim();
   }
   function buildSrt(r) {
     const segs = r.segments || [];
@@ -71,14 +112,29 @@
     });
     return out.join('\n');
   }
-  function buildJson(r) { return JSON.stringify(r, null, 2); }
+  function buildJson(r) {
+    const out = {
+      text: resultText.value,
+      diarized: r.diarized,
+      speaker_names: speakerNames,
+      segments: (r.segments || []).map(s => ({
+        start: s.start,
+        end: s.end,
+        speaker: s.speaker,
+        speaker_label: speakerLabel(s.speaker),
+        text: s.text,
+      })),
+    };
+    return JSON.stringify(out, null, 2);
+  }
   function payload(fmt) {
     if (fmt === 'srt') return buildSrt(result);
     if (fmt === 'json') return buildJson(result);
-    return buildText(result);
+    return resultText.value;  // .txt = whatever is currently in the box
   }
 
-  resultText.value = buildText(result);
+  // Manual edit takes priority; otherwise show the auto-generated text.
+  resultText.value = (result.edited_text != null) ? result.edited_text : buildText(result);
 
   document.getElementById('copy-btn').addEventListener('click', () => {
     navigator.clipboard.writeText(resultText.value);

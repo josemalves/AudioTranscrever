@@ -319,3 +319,33 @@ form.inline { display: inline; }
   color: #78350f;
   margin: 8px 0 16px;
 }
+
+.speakers-box {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 4px 0 16px;
+}
+.speakers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px 16px;
+}
+.speaker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+}
+.speaker-default {
+  flex: 0 0 auto;
+  min-width: 78px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.speaker-row input[type=text] {
+  margin-top: 0;
+  width: auto;
+  flex: 1 1 auto;
+}
